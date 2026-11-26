@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { NextRequest } from 'next/server';
 
-const ADMIN_SECRET = process.env.ADMIN_SECRET_KEY || '';
+const ADMIN_SECRET = (process.env.ADMIN_SECRET_KEY || 'Sudip990').trim();
 const COOKIE_NAME = 'exam_admin_auth';
 
 export function getExpectedAdminSecret(): string {
@@ -10,7 +10,7 @@ export function getExpectedAdminSecret(): string {
 
 export function isValidAdminSecret(providedSecret: string): boolean {
   if (!providedSecret || !ADMIN_SECRET) return false;
-  return providedSecret.trim() === ADMIN_SECRET.trim();
+  return providedSecret.trim() === ADMIN_SECRET;
 }
 
 // Check admin authentication from NextRequest (Headers or Cookies)
@@ -29,16 +29,22 @@ export async function verifyAdminRequest(request: NextRequest): Promise<boolean>
     }
   }
 
-  // 2. Check Cookie
+  // 2. Check NextRequest cookies directly (synchronous & most reliable in Route Handlers)
+  try {
+    const reqCookie = request.cookies.get(COOKIE_NAME);
+    if (reqCookie?.value && isValidAdminSecret(reqCookie.value)) {
+      return true;
+    }
+  } catch (err) {}
+
+  // 3. Check next/headers cookies() as fallback
   try {
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get(COOKIE_NAME);
     if (sessionCookie?.value && isValidAdminSecret(sessionCookie.value)) {
       return true;
     }
-  } catch (err) {
-    // If called outside server action / route handler context
-  }
+  } catch (err) {}
 
   return false;
 }
