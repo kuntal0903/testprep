@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import { Subject, Question, Attempt, LeaderboardEntry, AdminStats } from '@/types';
-import { initialSubjects, initialQuestions, initialAttempts } from './seed';
 import { isSupabaseConfigured, supabaseAdmin } from './supabase';
 
 interface StoreData {
@@ -13,6 +12,7 @@ interface StoreData {
 const DATA_DIR = path.join(process.cwd(), 'data');
 const STORE_FILE = path.join(DATA_DIR, 'store.json');
 
+// Ensure data folder and store file exist
 function getLocalStore(): StoreData {
   try {
     if (!fs.existsSync(DATA_DIR)) {
@@ -20,9 +20,9 @@ function getLocalStore(): StoreData {
     }
     if (!fs.existsSync(STORE_FILE)) {
       const initialData: StoreData = {
-        subjects: initialSubjects,
-        questions: initialQuestions,
-        attempts: initialAttempts,
+        subjects: [],
+        questions: [],
+        attempts: [],
       };
       fs.writeFileSync(STORE_FILE, JSON.stringify(initialData, null, 2), 'utf-8');
       return initialData;
@@ -30,15 +30,16 @@ function getLocalStore(): StoreData {
     const content = fs.readFileSync(STORE_FILE, 'utf-8');
     const parsed = JSON.parse(content);
     return {
-      subjects: parsed.subjects || initialSubjects,
-      questions: parsed.questions || initialQuestions,
-      attempts: parsed.attempts || initialAttempts,
+      subjects: Array.isArray(parsed.subjects) ? parsed.subjects : [],
+      questions: Array.isArray(parsed.questions) ? parsed.questions : [],
+      attempts: Array.isArray(parsed.attempts) ? parsed.attempts : [],
     };
   } catch (err) {
+    console.error('Error reading local store:', err);
     return {
-      subjects: initialSubjects,
-      questions: initialQuestions,
-      attempts: initialAttempts,
+      subjects: [],
+      questions: [],
+      attempts: [],
     };
   }
 }
@@ -49,9 +50,14 @@ function saveLocalStore(data: StoreData): void {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
     fs.writeFileSync(STORE_FILE, JSON.stringify(data, null, 2), 'utf-8');
-  } catch (err) {}
+  } catch (err) {
+    console.error('Error saving local store:', err);
+  }
 }
 
+// ==========================================
+// SUBJECTS
+// ==========================================
 export async function getSubjects(): Promise<Subject[]> {
   if (isSupabaseConfigured && supabaseAdmin) {
     try {
@@ -62,6 +68,7 @@ export async function getSubjects(): Promise<Subject[]> {
 
       if (error) throw error;
 
+      // Get question count per subject
       const { data: questions } = await supabaseAdmin.from('questions').select('subject_id');
       const counts: Record<string, number> = {};
       questions?.forEach((q) => {
@@ -72,7 +79,9 @@ export async function getSubjects(): Promise<Subject[]> {
         ...s,
         question_count: counts[s.id] || 0,
       }));
-    } catch (err) {}
+    } catch (err) {
+      console.warn('Supabase query failed, falling back to local store:', err);
+    }
   }
 
   const store = getLocalStore();
@@ -97,7 +106,9 @@ export async function getSubjectById(id: string): Promise<Subject | null> {
           .eq('subject_id', id);
         return { ...data, question_count: count || 0 };
       }
-    } catch (err) {}
+    } catch (err) {
+      console.warn('Supabase query failed, falling back to local store:', err);
+    }
   }
 
   const store = getLocalStore();
@@ -130,7 +141,9 @@ export async function createSubject(input: Partial<Subject>): Promise<Subject> {
         .select()
         .single();
       if (!error && data) return data;
-    } catch (err) {}
+    } catch (err) {
+      console.warn('Supabase insert failed, using local store:', err);
+    }
   }
 
   const store = getLocalStore();
@@ -154,7 +167,9 @@ export async function updateSubject(id: string, input: Partial<Subject>): Promis
         .select()
         .single();
       if (!error && data) return data;
-    } catch (err) {}
+    } catch (err) {
+      console.warn('Supabase update failed, using local store:', err);
+    }
   }
 
   const store = getLocalStore();
@@ -177,7 +192,9 @@ export async function deleteSubject(id: string): Promise<boolean> {
     try {
       const { error } = await supabaseAdmin.from('subjects').delete().eq('id', id);
       if (!error) return true;
-    } catch (err) {}
+    } catch (err) {
+      console.warn('Supabase delete failed, using local store:', err);
+    }
   }
 
   const store = getLocalStore();
@@ -188,6 +205,9 @@ export async function deleteSubject(id: string): Promise<boolean> {
   return true;
 }
 
+// ==========================================
+// QUESTIONS
+// ==========================================
 export async function getQuestionsBySubject(subjectId: string): Promise<Question[]> {
   if (isSupabaseConfigured && supabaseAdmin) {
     try {
@@ -197,7 +217,9 @@ export async function getQuestionsBySubject(subjectId: string): Promise<Question
         .eq('subject_id', subjectId)
         .order('created_at', { ascending: true });
       if (!error && data) return data;
-    } catch (err) {}
+    } catch (err) {
+      console.warn('Supabase question query failed, using local store:', err);
+    }
   }
 
   const store = getLocalStore();
@@ -213,7 +235,9 @@ export async function getQuestionById(id: string): Promise<Question | null> {
         .eq('id', id)
         .single();
       if (!error && data) return data;
-    } catch (err) {}
+    } catch (err) {
+      console.warn('Supabase getQuestionById failed:', err);
+    }
   }
 
   const store = getLocalStore();
@@ -243,7 +267,9 @@ export async function createQuestion(input: Partial<Question>): Promise<Question
         .select()
         .single();
       if (!error && data) return data;
-    } catch (err) {}
+    } catch (err) {
+      console.warn('Supabase createQuestion failed, using local store:', err);
+    }
   }
 
   const store = getLocalStore();
@@ -267,7 +293,9 @@ export async function updateQuestion(id: string, input: Partial<Question>): Prom
         .select()
         .single();
       if (!error && data) return data;
-    } catch (err) {}
+    } catch (err) {
+      console.warn('Supabase updateQuestion failed, using local store:', err);
+    }
   }
 
   const store = getLocalStore();
@@ -287,7 +315,9 @@ export async function deleteQuestion(id: string): Promise<boolean> {
     try {
       const { error } = await supabaseAdmin.from('questions').delete().eq('id', id);
       if (!error) return true;
-    } catch (err) {}
+    } catch (err) {
+      console.warn('Supabase deleteQuestion failed, using local store:', err);
+    }
   }
 
   const store = getLocalStore();
@@ -328,7 +358,9 @@ export async function bulkImportQuestions(
     try {
       const { data, error } = await supabaseAdmin.from('questions').insert(formatted).select();
       if (!error && data) return data.length;
-    } catch (err) {}
+    } catch (err) {
+      console.warn('Supabase bulkImport failed, using local store:', err);
+    }
   }
 
   const store = getLocalStore();
@@ -337,6 +369,9 @@ export async function bulkImportQuestions(
   return formatted.length;
 }
 
+// ==========================================
+// ATTEMPTS & LEADERBOARD
+// ==========================================
 export async function saveAttempt(input: Omit<Attempt, 'id' | 'created_at'>): Promise<Attempt> {
   const newAttempt: Attempt = {
     id: `att-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
@@ -352,7 +387,9 @@ export async function saveAttempt(input: Omit<Attempt, 'id' | 'created_at'>): Pr
         .select()
         .single();
       if (!error && data) return data;
-    } catch (err) {}
+    } catch (err) {
+      console.warn('Supabase saveAttempt failed, using local store:', err);
+    }
   }
 
   const store = getLocalStore();
@@ -370,7 +407,9 @@ export async function getAttempts(subjectId?: string): Promise<Attempt[]> {
       }
       const { data, error } = await query.order('created_at', { ascending: false });
       if (!error && data) return data;
-    } catch (err) {}
+    } catch (err) {
+      console.warn('Supabase getAttempts failed, using local store:', err);
+    }
   }
 
   const store = getLocalStore();
@@ -391,11 +430,14 @@ export async function getLeaderboard(subjectId?: string): Promise<LeaderboardEnt
       if (subjectId && subjectId !== 'all') {
         query = query.eq('subject_id', subjectId);
       }
+      // Highest score first, then fastest time taken
       const { data, error } = await query
         .order('score', { ascending: false })
         .order('time_taken_seconds', { ascending: true });
       if (!error && data) attempts = data;
-    } catch (err) {}
+    } catch (err) {
+      console.warn('Supabase getLeaderboard failed, using local store:', err);
+    }
   }
 
   if (attempts.length === 0) {
@@ -404,6 +446,7 @@ export async function getLeaderboard(subjectId?: string): Promise<LeaderboardEnt
     if (subjectId && subjectId !== 'all') {
       list = list.filter((a) => a.subject_id === subjectId);
     }
+    // Ranking Logic: Highest score (descending), fastest time taken (ascending)
     attempts = [...list].sort((a, b) => {
       if (b.score !== a.score) {
         return b.score - a.score;
@@ -411,6 +454,7 @@ export async function getLeaderboard(subjectId?: string): Promise<LeaderboardEnt
       return a.time_taken_seconds - b.time_taken_seconds;
     });
   } else {
+    // Ensure strict sorting
     attempts.sort((a, b) => {
       if (b.score !== a.score) {
         return b.score - a.score;
@@ -441,7 +485,9 @@ export async function deleteAttempt(id: string): Promise<boolean> {
     try {
       const { error } = await supabaseAdmin.from('attempts').delete().eq('id', id);
       if (!error) return true;
-    } catch (err) {}
+    } catch (err) {
+      console.warn('Supabase deleteAttempt failed, using local store:', err);
+    }
   }
 
   const store = getLocalStore();
@@ -461,7 +507,9 @@ export async function resetSubjectLeaderboard(subjectId: string): Promise<boolea
       }
       const { error } = await query;
       if (!error) return true;
-    } catch (err) {}
+    } catch (err) {
+      console.warn('Supabase resetLeaderboard failed, using local store:', err);
+    }
   }
 
   const store = getLocalStore();
@@ -474,6 +522,9 @@ export async function resetSubjectLeaderboard(subjectId: string): Promise<boolea
   return true;
 }
 
+// ==========================================
+// ADMIN METRICS & EXPORT
+// ==========================================
 export async function getAdminStats(): Promise<AdminStats> {
   const [subjects, attempts] = await Promise.all([getSubjects(), getAttempts()]);
 
