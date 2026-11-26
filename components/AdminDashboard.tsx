@@ -110,11 +110,7 @@ export function AdminDashboard() {
     setAuthError('');
 
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ secretKey: secretInput }),
-      });
+      const res = await fetch('/api/auth/login', {\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({ secretKey: secretInput }),\n      });
 
       if (!res.ok) {
         const data = await res.json();
@@ -123,10 +119,7 @@ export function AdminDashboard() {
 
       setIsAuthenticated(true);
       loadAllData();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Login failed';
-      setAuthError(message);
-    } finally {
+    } catch (err: unknown) {\n      const message = err instanceof Error ? err.message : 'Login failed';\n      setAuthError(message);\n    } finally {
       setIsLoggingIn(false);
     }
   };
@@ -215,28 +208,17 @@ export function AdminDashboard() {
     e.preventDefault();
     try {
       if (editingSubject) {
-        const res = await fetch(`/api/subjects/${editingSubject.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(subjectForm),
-        });
+        const res = await fetch(`/api/subjects/${editingSubject.id}`, {\n          method: 'PUT',\n          headers: { 'Content-Type': 'application/json' },\n          body: JSON.stringify(subjectForm),\n        });
         if (!res.ok) throw new Error('Failed to update subject');
         showBanner('success', `Subject "${subjectForm.title}" updated successfully.`);
       } else {
-        const res = await fetch('/api/subjects', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(subjectForm),
-        });
+        const res = await fetch('/api/subjects', {\n          method: 'POST',\n          headers: { 'Content-Type': 'application/json' },\n          body: JSON.stringify(subjectForm),\n        });
         if (!res.ok) throw new Error('Failed to create subject');
         showBanner('success', `Subject "${subjectForm.title}" created successfully.`);
       }
       setShowSubjectModal(false);
       loadAllData();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Error saving subject';
-      showBanner('error', message);
-    }
+    } catch (err: unknown) {\n      const message = err instanceof Error ? err.message : 'Error saving subject';\n      showBanner('error', message);\n    }
   };
 
   const handleDeleteSubject = async (id: string, title: string) => {
@@ -248,10 +230,7 @@ export function AdminDashboard() {
       if (!res.ok) throw new Error('Failed to delete subject');
       showBanner('success', `Subject "${title}" deleted.`);
       loadAllData();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Error deleting subject';
-      showBanner('error', message);
-    }
+    } catch (err: unknown) {\n      const message = err instanceof Error ? err.message : 'Error deleting subject';\n      showBanner('error', message);\n    }
   };
 
   // ==========================================
@@ -293,32 +272,18 @@ export function AdminDashboard() {
 
     try {
       if (editingQuestion) {
-        const res = await fetch(`/api/questions/${editingQuestion.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(questionForm),
-        });
+        const res = await fetch(`/api/questions/${editingQuestion.id}`, {\n          method: 'PUT',\n          headers: { 'Content-Type': 'application/json' },\n          body: JSON.stringify(questionForm),\n        });
         if (!res.ok) throw new Error('Failed to update question');
         showBanner('success', 'Question updated successfully.');
       } else {
-        const res = await fetch('/api/questions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...questionForm,
-            subject_id: selectedSubjectId,
-          }),
-        });
+        const res = await fetch('/api/questions', {\n          method: 'POST',\n          headers: { 'Content-Type': 'application/json' },\n          body: JSON.stringify({\n            ...questionForm,\n            subject_id: selectedSubjectId,\n          }),\n        });
         if (!res.ok) throw new Error('Failed to create question');
         showBanner('success', 'New MCQ added successfully.');
       }
       setShowQuestionModal(false);
       loadQuestions(selectedSubjectId);
       loadAllData();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Error saving question';
-      showBanner('error', message);
-    }
+    } catch (err: unknown) {\n      const message = err instanceof Error ? err.message : 'Error saving question';\n      showBanner('error', message);\n    }
   };
 
   const handleDeleteQuestion = async (id: string) => {
@@ -329,10 +294,7 @@ export function AdminDashboard() {
       showBanner('success', 'Question deleted.');
       loadQuestions(selectedSubjectId);
       loadAllData();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Error deleting question';
-      showBanner('error', message);
-    }
+    } catch (err: unknown) {\n      const message = err instanceof Error ? err.message : 'Error deleting question';\n      showBanner('error', message);\n    }
   };
 
   // ==========================================
@@ -352,23 +314,13 @@ export function AdminDashboard() {
         formData.append('subject_id', importTargetSubjectId);
         formData.append('file', importFile);
 
-        const res = await fetch('/api/questions/import', {
-          method: 'POST',
-          body: formData,
-        });
+        const res = await fetch('/api/questions/import', {\n          method: 'POST',\n          body: formData,\n        });
 
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Import failed');
         showBanner('success', data.message || `Imported ${data.count} questions.`);
       } else if (csvRawText.trim()) {
-        const res = await fetch('/api/questions/import', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            subject_id: importTargetSubjectId,
-            csv_text: csvRawText.trim(),
-          }),
-        });
+        const res = await fetch('/api/questions/import', {\n          method: 'POST',\n          headers: { 'Content-Type': 'application/json' },\n          body: JSON.stringify({\n            subject_id: importTargetSubjectId,\n            csv_text: csvRawText.trim(),\n          }),\n        });
 
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Import failed');
@@ -381,10 +333,7 @@ export function AdminDashboard() {
       setCsvRawText('');
       loadQuestions(importTargetSubjectId);
       loadAllData();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Import failed';
-      showBanner('error', message);
-    } finally {
+    } catch (err: unknown) {\n      const message = err instanceof Error ? err.message : 'Import failed';\n      showBanner('error', message);\n    } finally {
       setIsImporting(false);
     }
   };
@@ -421,9 +370,7 @@ export function AdminDashboard() {
   };
 
   const downloadSampleCSV = () => {
-    const csvContent = `question_text,option_a,option_b,option_c,option_d,correct_option,explanation
-"What does CSS box-sizing: border-box do?","Includes padding and border within element width and height","Excludes padding from height","Makes margins negative","Hides element overflow","A","border-box makes width and height cover content, padding, and border."
-"Which HTTP status indicates Unauthorized authentication failure?","200","401","404","500","B","HTTP 401 Unauthorized indicates that the request lacks valid credentials."`;
+    const csvContent = `question_text,option_a,option_b,option_c,option_d,correct_option,explanation\n"What does CSS box-sizing: border-box do?","Includes padding and border within element width and height","Excludes padding from height","Makes margins negative","Hides element overflow","A","border-box makes width and height cover content, padding, and border."\n"Which HTTP status indicates Unauthorized authentication failure?","200","401","404","500","B","HTTP 401 Unauthorized indicates that the request lacks valid credentials."`;
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -444,10 +391,7 @@ export function AdminDashboard() {
       if (!res.ok) throw new Error('Failed to delete attempt');
       showBanner('success', `Attempt for "${studentName}" removed.`);
       loadAllData();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Error deleting attempt';
-      showBanner('error', message);
-    }
+    } catch (err: unknown) {\n      const message = err instanceof Error ? err.message : 'Error deleting attempt';\n      showBanner('error', message);\n    }
   };
 
   const handleResetLeaderboard = async () => {
@@ -462,10 +406,7 @@ export function AdminDashboard() {
       if (!res.ok) throw new Error('Failed to reset leaderboard');
       showBanner('success', `Leaderboard for "${subTitle}" was successfully reset.`);
       loadAllData();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Error resetting leaderboard';
-      showBanner('error', message);
-    }
+    } catch (err: unknown) {\n      const message = err instanceof Error ? err.message : 'Error resetting leaderboard';\n      showBanner('error', message);\n    }
   };
 
   // ==========================================
@@ -506,14 +447,6 @@ export function AdminDashboard() {
                 onChange={(e) => setSecretInput(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-700 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
-            </div>
-
-            {/* Dev Hint Box */}
-            <div className="p-3 rounded-xl bg-indigo-950/60 border border-indigo-800/40 text-[11px] text-indigo-300 flex items-start gap-2">
-              <Sparkles className="w-4 h-4 shrink-0 text-indigo-400 mt-0.5" />
-              <div>
-                Default administrator key: <code className="bg-indigo-900 px-1.5 py-0.5 rounded font-mono font-bold text-white">Sudip990</code>. (Configured in <code>.env.local</code> as <code>ADMIN_SECRET_KEY</code>).
-              </div>
             </div>
 
             <button
@@ -1035,7 +968,7 @@ export function AdminDashboard() {
                     {q.explanation && (
                       <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1">
                         <strong className="text-indigo-900 flex items-center gap-1 font-semibold">
-                          <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                          <Sparkles className="w-3 h-3 text-indigo-600" />
                           Explanation provided to students:
                         </strong>
                         <p className="text-slate-600 leading-relaxed">{q.explanation}</p>
