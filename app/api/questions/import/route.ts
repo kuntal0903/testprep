@@ -296,6 +296,15 @@ export async function POST(request: NextRequest) {
       }
       if (body.new_subject && typeof body.new_subject === 'object') {
         fileMetadataSubject = body.new_subject;
+      } else if (body.new_subject_title && (!subjectId || subjectId === 'new')) {
+        fileMetadataSubject = {
+          title: String(body.new_subject_title).trim(),
+          description: String(body.new_subject_description || '').trim(),
+          time_limit: Number(body.time_limit) || 15,
+          passing_score: Number(body.passing_score) || 60,
+          negative_marking: Boolean(body.negative_marking),
+          negative_mark_value: Number(body.negative_mark_value) || 0.25,
+        };
       }
     }
 
