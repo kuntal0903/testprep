@@ -5,7 +5,7 @@ This guide walks you through publishing your **TESTPREP** project to **GitHub** 
 ---
 
 ## 🔐 1. Admin Credentials
-- **Admin Password / Key:** `Sudip990`
+- **Admin Password / Key:** Configured privately via `ADMIN_SECRET_KEY` environment variable (never share publicly)
 - Configured in [.env.local](file:///d:/test%20portal/.env.local) and [lib/auth.ts](file:///d:/test%20portal/lib/auth.ts)
 
 ---
@@ -57,7 +57,7 @@ Once your repository is on GitHub:
    - **Framework Preset:** Next.js (automatically detected)
    - **Root Directory:** `./`
 5. Expand the **Environment Variables** section and add:
-   - `ADMIN_SECRET_KEY`: `Sudip990`
+   - `ADMIN_SECRET_KEY`: `your-secure-admin-password`
    - `NEXT_PUBLIC_APP_NAME`: `TESTPREP`
    *(Optional)* If using Supabase for global cloud persistence:
    - `NEXT_PUBLIC_SUPABASE_URL`: `https://your-project.supabase.co`
