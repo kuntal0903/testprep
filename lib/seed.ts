@@ -1,1 +1,6 @@
-aW1wb3J0IHsgU3ViamVjdCwgUXVlc3Rpb24sIEF0dGVtcHQgfSBmcm9tICdAL3R5cGVzJzsKCi8vIERlZmF1bHQgZW1wdHkgYXJyYXlzIC0gbm8gZHVtbXkgc3ViamVjdHMsIHF1ZXN0aW9ucywgb3IgdXNlciBhdHRlbXB0cwpleHBvcnQgY29uc3QgaW5pdGlhbFN1YmplY3RzOiBTdWJqZWN0W10gPSBbXTsKZXhwb3J0IGNvbnN0IGluaXRpYWxRdWVzdGlvbnM6IFF1ZXN0aW9uW10gPSBbXTsKZXhwb3J0IGNvbnN0IGluaXRpYWxBdHRlbXB0czogQXR0ZW1wdFtdID0gW107Cg==
+import { Subject, Question, Attempt } from '@/types';
+
+// Default empty arrays - no dummy subjects, questions, or user attempts
+export const initialSubjects: Subject[] = [];
+export const initialQuestions: Question[] = [];
+export const initialAttempts: Attempt[] = [];
