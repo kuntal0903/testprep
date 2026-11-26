@@ -33,7 +33,8 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json(newSubject, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: 'Failed to create subject' }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to create subject';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
