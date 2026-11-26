@@ -52,6 +52,9 @@ function saveLocalStore(data: StoreData): void {
     fs.writeFileSync(STORE_FILE, JSON.stringify(data, null, 2), 'utf-8');
   } catch (err) {
     console.error('Error saving local store:', err);
+    throw new Error(
+      'Database is not configured for persistent storage. On Vercel, please set NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY in your Environment Variables.'
+    );
   }
 }
 
