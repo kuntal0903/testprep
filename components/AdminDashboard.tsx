@@ -34,7 +34,9 @@ import {
   ChevronRight,
   Layers,
   Sparkles,
-  BarChart3
+  BarChart3,
+  FileCheck2,
+  FolderPlus
 } from 'lucide-react';
 
 export function AdminDashboard() {
@@ -67,6 +69,10 @@ export function AdminDashboard() {
     negative_mark_value: 0.25,
     passing_score: 60,
   });
+  const [subjectModalFile, setSubjectModalFile] = useState<File | null>(null);
+
+  // Dedicated Upload Modal State
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
   const [showQuestionModal, setShowQuestionModal] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
@@ -82,9 +88,22 @@ export function AdminDashboard() {
 
   // Bulk Import State
   const [importTargetSubjectId, setImportTargetSubjectId] = useState('');
+  const [isCreatingNewSubjectInImport, setIsCreatingNewSubjectInImport] = useState(false);
+  const [newSubjectInline, setNewSubjectInline] = useState({
+    title: '',
+    description: '',
+    time_limit: 15,
+    passing_score: 60,
+  });
   const [importFile, setImportFile] = useState<File | null>(null);
   const [csvRawText, setCsvRawText] = useState('');
   const [isImporting, setIsImporting] = useState(false);
+  const [previewParsedCount, setPreviewParsedCount] = useState<number | null>(null);
+  const [previewSampleQuestion, setPreviewSampleQuestion] = useState<{
+    text: string;
+    options: string[];
+    correct: string;
+  } | null>(null);
 
   // Check auth session on mount
   useEffect(() => {
@@ -110,7 +129,11 @@ export function AdminDashboard() {
     setAuthError('');
 
     try {
-      const res = await fetch('/api/auth/login', {\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({ secretKey: secretInput }),\n      });
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ secretKey: secretInput }),
+      });
 
       if (!res.ok) {
         const data = await res.json();
@@ -119,7 +142,10 @@ export function AdminDashboard() {
 
       setIsAuthenticated(true);
       loadAllData();
-    } catch (err: unknown) {\n      const message = err instanceof Error ? err.message : 'Login failed';\n      setAuthError(message);\n    } finally {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Login failed';
+      setAuthError(message);
+    } finally {
       setIsLoggingIn(false);
     }
   };
@@ -179,7 +205,77 @@ export function AdminDashboard() {
   // ==========================================
   // SUBJECT MANAGEMENT HANDLERS
   // ==========================================
+  const inspectFileContent = (file: File | null) => {
+    if (!file) {
+      setPreviewParsedCount(null);
+      setPreviewSampleQuestion(null);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = (e.target?.result as string) || '';
+        if (file.name.endsWith('.json') || text.trim().startsWith('{') || text.trim().startsWith('[')) {
+          const parsed = JSON.parse(text);
+          const list = Array.isArray(parsed) ? parsed : (parsed.questions || parsed.data || parsed.items || []);
+          if (Array.isArray(list) && list.length > 0) {
+            setPreviewParsedCount(list.length);
+            const first = list[0];
+            const qText = first.question_text || first.question || first.prompt || first.text || 'Sample Question';
+            let opts: string[] = [];
+            if (Array.isArray(first.options)) opts = first.options.map(String);
+            else if (first.options && typeof first.options === 'object') opts = Object.values(first.options).map(String);
+            else {
+              opts = [first.option_a || first.a || '', first.option_b || first.b || '', first.option_c || first.c || '', first.option_d || first.d || ''].filter(Boolean);
+            }
+            setPreviewSampleQuestion({
+              text: qText,
+              options: opts.slice(0, 4),
+              correct: String(first.correct_option || first.correct || first.answer || 'A'),
+            });
+            return;
+          }
+        }
+        // CSV parsing quick estimate
+        const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+        if (lines.length > 1) {
+          const count = lines.length - 1;
+          setPreviewParsedCount(count);
+          setPreviewSampleQuestion({
+            text: `Detected ~${count} question rows in CSV`,
+            options: ['Preview available after upload'],
+            correct: 'Verified in set',
+          });
+          return;
+        }
+        setPreviewParsedCount(null);
+        setPreviewSampleQuestion(null);
+      } catch {
+        setPreviewParsedCount(null);
+        setPreviewSampleQuestion(null);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const openUploadModalForSubject = (subjectId?: string) => {
+    if (subjectId) {
+      setImportTargetSubjectId(subjectId);
+    } else if (subjects.length > 0 && !importTargetSubjectId) {
+      setImportTargetSubjectId(subjects[0].id);
+    }
+    setIsCreatingNewSubjectInImport(false);
+    setImportFile(null);
+    setCsvRawText('');
+    setPreviewParsedCount(null);
+    setPreviewSampleQuestion(null);
+    setShowUploadModal(true);
+  };
+
   const openSubjectModal = (sub?: Subject) => {
+    setSubjectModalFile(null);
+    setPreviewParsedCount(null);
+    setPreviewSampleQuestion(null);
     if (sub) {
       setEditingSubject(sub);
       setSubjectForm({
@@ -207,18 +303,57 @@ export function AdminDashboard() {
   const handleSaveSubject = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      let savedSubjectId = editingSubject?.id;
       if (editingSubject) {
-        const res = await fetch(`/api/subjects/${editingSubject.id}`, {\n          method: 'PUT',\n          headers: { 'Content-Type': 'application/json' },\n          body: JSON.stringify(subjectForm),\n        });
+        const res = await fetch(`/api/subjects/${editingSubject.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(subjectForm),
+        });
         if (!res.ok) throw new Error('Failed to update subject');
         showBanner('success', `Subject "${subjectForm.title}" updated successfully.`);
       } else {
-        const res = await fetch('/api/subjects', {\n          method: 'POST',\n          headers: { 'Content-Type': 'application/json' },\n          body: JSON.stringify(subjectForm),\n        });
+        const res = await fetch('/api/subjects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(subjectForm),
+        });
         if (!res.ok) throw new Error('Failed to create subject');
+        const created = await res.json();
+        savedSubjectId = created.id;
         showBanner('success', `Subject "${subjectForm.title}" created successfully.`);
       }
+
+      // If a question set file was attached in the subject modal, import it now
+      if (subjectModalFile && savedSubjectId) {
+        const formData = new FormData();
+        formData.append('subject_id', savedSubjectId);
+        formData.append('file', subjectModalFile);
+        const importRes = await fetch('/api/questions/import', {
+          method: 'POST',
+          body: formData,
+        });
+        if (importRes.ok) {
+          const importData = await importRes.json();
+          showBanner('success', `Subject saved & ${importData.count} questions uploaded successfully!`);
+        } else {
+          const errData = await importRes.json();
+          showBanner('error', `Subject saved, but questions import issue: ${errData.error || 'Failed'}`);
+        }
+      }
+
+      setSubjectModalFile(null);
       setShowSubjectModal(false);
       loadAllData();
-    } catch (err: unknown) {\n      const message = err instanceof Error ? err.message : 'Error saving subject';\n      showBanner('error', message);\n    }
+      if (savedSubjectId) {
+        setSelectedSubjectId(savedSubjectId);
+        setImportTargetSubjectId(savedSubjectId);
+        loadQuestions(savedSubjectId);
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error saving subject';
+      showBanner('error', message);
+    }
   };
 
   const handleDeleteSubject = async (id: string, title: string) => {
@@ -230,7 +365,10 @@ export function AdminDashboard() {
       if (!res.ok) throw new Error('Failed to delete subject');
       showBanner('success', `Subject "${title}" deleted.`);
       loadAllData();
-    } catch (err: unknown) {\n      const message = err instanceof Error ? err.message : 'Error deleting subject';\n      showBanner('error', message);\n    }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error deleting subject';
+      showBanner('error', message);
+    }
   };
 
   // ==========================================
@@ -272,18 +410,32 @@ export function AdminDashboard() {
 
     try {
       if (editingQuestion) {
-        const res = await fetch(`/api/questions/${editingQuestion.id}`, {\n          method: 'PUT',\n          headers: { 'Content-Type': 'application/json' },\n          body: JSON.stringify(questionForm),\n        });
+        const res = await fetch(`/api/questions/${editingQuestion.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(questionForm),
+        });
         if (!res.ok) throw new Error('Failed to update question');
         showBanner('success', 'Question updated successfully.');
       } else {
-        const res = await fetch('/api/questions', {\n          method: 'POST',\n          headers: { 'Content-Type': 'application/json' },\n          body: JSON.stringify({\n            ...questionForm,\n            subject_id: selectedSubjectId,\n          }),\n        });
+        const res = await fetch('/api/questions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...questionForm,
+            subject_id: selectedSubjectId,
+          }),
+        });
         if (!res.ok) throw new Error('Failed to create question');
         showBanner('success', 'New MCQ added successfully.');
       }
       setShowQuestionModal(false);
       loadQuestions(selectedSubjectId);
       loadAllData();
-    } catch (err: unknown) {\n      const message = err instanceof Error ? err.message : 'Error saving question';\n      showBanner('error', message);\n    }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error saving question';
+      showBanner('error', message);
+    }
   };
 
   const handleDeleteQuestion = async (id: string) => {
@@ -294,7 +446,10 @@ export function AdminDashboard() {
       showBanner('success', 'Question deleted.');
       loadQuestions(selectedSubjectId);
       loadAllData();
-    } catch (err: unknown) {\n      const message = err instanceof Error ? err.message : 'Error deleting question';\n      showBanner('error', message);\n    }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error deleting question';
+      showBanner('error', message);
+    }
   };
 
   // ==========================================
@@ -302,8 +457,12 @@ export function AdminDashboard() {
   // ==========================================
   const handleBulkImport = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!importTargetSubjectId) {
-      showBanner('error', 'Please select a target subject.');
+    if (!isCreatingNewSubjectInImport && !importTargetSubjectId) {
+      showBanner('error', 'Please select a target subject or create a new one.');
+      return;
+    }
+    if (isCreatingNewSubjectInImport && !newSubjectInline.title.trim()) {
+      showBanner('error', 'Please enter a title for the new subject.');
       return;
     }
 
@@ -311,29 +470,75 @@ export function AdminDashboard() {
     try {
       if (importFile) {
         const formData = new FormData();
-        formData.append('subject_id', importTargetSubjectId);
+        if (isCreatingNewSubjectInImport) {
+          formData.append('new_subject_title', newSubjectInline.title.trim());
+          formData.append('new_subject_description', newSubjectInline.description.trim());
+          formData.append('time_limit', String(newSubjectInline.time_limit || 15));
+          formData.append('passing_score', String(newSubjectInline.passing_score || 60));
+        } else {
+          formData.append('subject_id', importTargetSubjectId);
+        }
         formData.append('file', importFile);
 
-        const res = await fetch('/api/questions/import', {\n          method: 'POST',\n          body: formData,\n        });
+        const res = await fetch('/api/questions/import', {
+          method: 'POST',
+          body: formData,
+        });
 
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Import failed');
-        showBanner('success', data.message || `Imported ${data.count} questions.`);
+        showBanner('success', data.message || `Successfully imported ${data.count} questions.`);
+        if (data.subject_id) {
+          setSelectedSubjectId(data.subject_id);
+          setImportTargetSubjectId(data.subject_id);
+          loadQuestions(data.subject_id);
+        } else if (importTargetSubjectId) {
+          loadQuestions(importTargetSubjectId);
+        }
       } else if (csvRawText.trim()) {
-        const res = await fetch('/api/questions/import', {\n          method: 'POST',\n          headers: { 'Content-Type': 'application/json' },\n          body: JSON.stringify({\n            subject_id: importTargetSubjectId,\n            csv_text: csvRawText.trim(),\n          }),\n        });
+        const res = await fetch('/api/questions/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...(isCreatingNewSubjectInImport
+              ? {
+                  new_subject_title: newSubjectInline.title.trim(),
+                  new_subject_description: newSubjectInline.description.trim(),
+                  time_limit: newSubjectInline.time_limit || 15,
+                  passing_score: newSubjectInline.passing_score || 60,
+                }
+              : {
+                  subject_id: importTargetSubjectId,
+                }),
+            csv_text: csvRawText.trim(),
+          }),
+        });
 
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Import failed');
-        showBanner('success', data.message || `Imported ${data.count} questions.`);
+        showBanner('success', data.message || `Successfully imported ${data.count} questions.`);
+        if (data.subject_id) {
+          setSelectedSubjectId(data.subject_id);
+          setImportTargetSubjectId(data.subject_id);
+          loadQuestions(data.subject_id);
+        } else if (importTargetSubjectId) {
+          loadQuestions(importTargetSubjectId);
+        }
       } else {
-        throw new Error('Please choose a file or paste CSV text.');
+        throw new Error('Please choose a file (.json or .csv) or paste CSV text.');
       }
 
       setImportFile(null);
       setCsvRawText('');
-      loadQuestions(importTargetSubjectId);
+      setPreviewParsedCount(null);
+      setPreviewSampleQuestion(null);
+      setShowUploadModal(false);
+      setIsCreatingNewSubjectInImport(false);
       loadAllData();
-    } catch (err: unknown) {\n      const message = err instanceof Error ? err.message : 'Import failed';\n      showBanner('error', message);\n    } finally {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Import failed';
+      showBanner('error', message);
+    } finally {
       setIsImporting(false);
     }
   };
@@ -370,7 +575,9 @@ export function AdminDashboard() {
   };
 
   const downloadSampleCSV = () => {
-    const csvContent = `question_text,option_a,option_b,option_c,option_d,correct_option,explanation\n"What does CSS box-sizing: border-box do?","Includes padding and border within element width and height","Excludes padding from height","Makes margins negative","Hides element overflow","A","border-box makes width and height cover content, padding, and border."\n"Which HTTP status indicates Unauthorized authentication failure?","200","401","404","500","B","HTTP 401 Unauthorized indicates that the request lacks valid credentials."`;
+    const csvContent = `question_text,option_a,option_b,option_c,option_d,correct_option,explanation
+"What does CSS box-sizing: border-box do?","Includes padding and border within element width and height","Excludes padding from height","Makes margins negative","Hides element overflow","A","border-box makes width and height cover content, padding, and border."
+"Which HTTP status indicates Unauthorized authentication failure?","200","401","404","500","B","HTTP 401 Unauthorized indicates that the request lacks valid credentials."`;
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -391,7 +598,10 @@ export function AdminDashboard() {
       if (!res.ok) throw new Error('Failed to delete attempt');
       showBanner('success', `Attempt for "${studentName}" removed.`);
       loadAllData();
-    } catch (err: unknown) {\n      const message = err instanceof Error ? err.message : 'Error deleting attempt';\n      showBanner('error', message);\n    }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error deleting attempt';
+      showBanner('error', message);
+    }
   };
 
   const handleResetLeaderboard = async () => {
@@ -406,7 +616,10 @@ export function AdminDashboard() {
       if (!res.ok) throw new Error('Failed to reset leaderboard');
       showBanner('success', `Leaderboard for "${subTitle}" was successfully reset.`);
       loadAllData();
-    } catch (err: unknown) {\n      const message = err instanceof Error ? err.message : 'Error resetting leaderboard';\n      showBanner('error', message);\n    }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error resetting leaderboard';
+      showBanner('error', message);
+    }
   };
 
   // ==========================================
@@ -475,7 +688,6 @@ export function AdminDashboard() {
       </div>
     );
   }
-
 
   // ==========================================
   // 2. AUTHENTICATED ADMIN DASHBOARD VIEW
@@ -804,7 +1016,7 @@ export function AdminDashboard() {
                     </div>
                   </div>
 
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                  <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
                     <button
                       type="button"
                       onClick={() => {
@@ -818,15 +1030,27 @@ export function AdminDashboard() {
                       Manage MCQs ({sub.question_count || 0})
                     </button>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => openUploadModalForSubject(sub.id)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold transition-colors"
+                        title="Upload Questions Set to this subject"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Upload Set</span>
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => openSubjectModal(sub)}
-                        className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
-                        title="Edit Subject"
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors"
+                        title="Edit Subject parameters"
                       >
-                        <Edit3 className="w-4 h-4" />
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>Edit</span>
                       </button>
+
                       <button
                         type="button"
                         onClick={() => handleDeleteSubject(sub.id, sub.title)}
@@ -854,7 +1078,7 @@ export function AdminDashboard() {
                 <p className="text-xs text-slate-700">Add, format, and maintain 4-option MCQs with explanations.</p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {/* Select Subject Selector */}
                 <select
                   value={selectedSubjectId}
@@ -873,6 +1097,16 @@ export function AdminDashboard() {
 
                 <button
                   type="button"
+                  onClick={() => openUploadModalForSubject(selectedSubjectId)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold shadow-xs transition-colors"
+                  title="Upload Question Set to current subject"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Upload Question Set</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => openQuestionModal()}
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs"
                 >
@@ -884,20 +1118,30 @@ export function AdminDashboard() {
 
             {/* Questions List */}
             {questions.length === 0 ? (
-              <div className="p-12 text-center bg-white rounded-2xl border border-dashed border-slate-300 text-slate-700 space-y-3">
+              <div className="p-12 text-center bg-white rounded-2xl border border-dashed border-slate-300 text-slate-700 space-y-4">
                 <HelpCircle className="w-12 h-12 text-slate-400 mx-auto" />
                 <h3 className="font-bold text-slate-900 text-base">No Questions in this Subject</h3>
-                <p className="text-xs max-w-sm mx-auto">
-                  Click &quot;Add MCQ&quot; above to create a question manually, or switch to the Bulk Import tab to upload a batch.
+                <p className="text-xs max-w-md mx-auto">
+                  Upload a batch question set (.json or .csv) to immediately populate this subject, or add questions manually one by one.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => openQuestionModal()}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add First Question
-                </button>
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => openUploadModalForSubject(selectedSubjectId)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Upload Question Set (.json / .csv)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openQuestionModal()}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add MCQ Manually</span>
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="space-y-4">
@@ -994,30 +1238,163 @@ export function AdminDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Import Section */}
               <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5">
-                <div className="flex items-center gap-2">
-                  <Upload className="w-5 h-5 text-indigo-700" />
-                  <h3 className="font-bold text-slate-900 text-base">Bulk Upload Questions</h3>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Upload className="w-5 h-5 text-indigo-700" />
+                    <h3 className="font-bold text-slate-900 text-base">Bulk Upload Questions</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCreatingNewSubjectInImport(!isCreatingNewSubjectInImport);
+                      setPreviewParsedCount(null);
+                      setPreviewSampleQuestion(null);
+                    }}
+                    className="text-xs text-indigo-600 font-semibold hover:underline flex items-center gap-1"
+                  >
+                    {isCreatingNewSubjectInImport ? (
+                      <>Select Existing Subject</>
+                    ) : (
+                      <>
+                        <FolderPlus className="w-3.5 h-3.5" />
+                        <span>+ New Subject</span>
+                      </>
+                    )}
+                  </button>
                 </div>
 
+                {/* Active Subject Configuration Preview */}
+                {!isCreatingNewSubjectInImport && importTargetSubjectId && (() => {
+                  const currentSub = subjects.find((s) => s.id === importTargetSubjectId);
+                  if (!currentSub) return null;
+                  return (
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-900 text-xs sm:text-sm">{currentSub.title}</span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-200 text-slate-700">
+                            {currentSub.id}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2.5 text-slate-600 text-[11px]">
+                          <span>⏱️ {currentSub.time_limit}m timer</span>
+                          <span>🎯 Pass: {currentSub.passing_score}%</span>
+                          <span>{currentSub.negative_marking ? `⚠️ -${currentSub.negative_mark_value} Neg.` : '✅ No Neg.'}</span>
+                          <span>📝 {currentSub.question_count || 0} MCQs</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openSubjectModal(currentSub)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold shadow-2xs self-start sm:self-auto transition-colors"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Edit Subject Settings</span>
+                      </button>
+                    </div>
+                  );
+                })()}
+
                 <form onSubmit={handleBulkImport} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Destination Subject <span className="text-rose-500">*</span>
-                    </label>
-                    <select
-                      value={importTargetSubjectId}
-                      onChange={(e) => setImportTargetSubjectId(e.target.value)}
-                      required
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-                    >
-                      <option value="">Select target subject...</option>
-                      {subjects.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.title}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  {isCreatingNewSubjectInImport ? (
+                    <div className="p-4 rounded-xl bg-indigo-50/70 border border-indigo-200 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-bold text-indigo-900 text-xs flex items-center gap-1.5">
+                          <FolderPlus className="w-4 h-4 text-indigo-600" />
+                          Create New Subject For This Upload
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={() => setIsCreatingNewSubjectInImport(false)}
+                          className="text-xs text-indigo-600 hover:underline"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                          Subject Title <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="e.g. Computer Science: Python Programming"
+                          value={newSubjectInline.title}
+                          onChange={(e) => setNewSubjectInline({ ...newSubjectInline, title: e.target.value })}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-900 bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                          Description
+                        </label>
+                        <textarea
+                          rows={2}
+                          placeholder="Brief summary of topics covered..."
+                          value={newSubjectInline.description}
+                          onChange={(e) => setNewSubjectInline({ ...newSubjectInline, description: e.target.value })}
+                          className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs text-slate-900 bg-white"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                            Time Limit (Mins)
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={180}
+                            value={newSubjectInline.time_limit}
+                            onChange={(e) => setNewSubjectInline({ ...newSubjectInline, time_limit: parseInt(e.target.value, 10) || 15 })}
+                            className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs text-slate-900 bg-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                            Passing Score (%)
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={newSubjectInline.passing_score}
+                            onChange={(e) => setNewSubjectInline({ ...newSubjectInline, passing_score: parseFloat(e.target.value) || 60 })}
+                            className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs text-slate-900 bg-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                        Destination Subject <span className="text-rose-500">*</span>
+                      </label>
+                      <select
+                        value={importTargetSubjectId}
+                        onChange={(e) => {
+                          if (e.target.value === '__new__') {
+                            setIsCreatingNewSubjectInImport(true);
+                          } else {
+                            setImportTargetSubjectId(e.target.value);
+                          }
+                        }}
+                        required
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                      >
+                        <option value="">Select target subject...</option>
+                        {subjects.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.title} ({s.question_count || 0} MCQs)
+                          </option>
+                        ))}
+                        <option value="__new__">+ Create New Subject...</option>
+                      </select>
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1.5">
@@ -1026,10 +1403,39 @@ export function AdminDashboard() {
                     <input
                       type="file"
                       accept=".json,.csv"
-                      onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        setImportFile(file);
+                        inspectFileContent(file);
+                      }}
                       className="w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"
                     />
                   </div>
+
+                  {/* Live File Verification Preview */}
+                  {previewParsedCount !== null && (
+                    <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs space-y-2">
+                      <div className="flex items-center gap-2 font-bold text-emerald-800">
+                        <FileCheck2 className="w-4 h-4 text-emerald-600" />
+                        <span>Ready to Import: {previewParsedCount} Questions Detected</span>
+                      </div>
+                      {previewSampleQuestion && (
+                        <div className="p-2.5 rounded-lg bg-white border border-emerald-100 text-[11px] space-y-1">
+                          <p className="font-semibold text-slate-800 line-clamp-1">
+                            Sample: {previewSampleQuestion.text}
+                          </p>
+                          {previewSampleQuestion.options.length > 0 && (
+                            <p className="text-slate-600 truncate">
+                              Options: {previewSampleQuestion.options.join(' | ')}
+                            </p>
+                          )}
+                          <p className="text-emerald-700 font-medium">
+                            Correct: Option {previewSampleQuestion.correct}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div className="relative flex py-1 items-center">
                     <div className="flex-grow border-t border-slate-200"></div>
@@ -1039,7 +1445,7 @@ export function AdminDashboard() {
 
                   <div>
                     <textarea
-                      rows={5}
+                      rows={4}
                       placeholder={`question_text,option_a,option_b,option_c,option_d,correct_option,explanation\n"What is 2+2?","3","4","5","6","B","Basic arithmetic"`}
                       value={csvRawText}
                       onChange={(e) => setCsvRawText(e.target.value)}
@@ -1414,6 +1820,48 @@ CREATE POLICY "Public can view subjects" ...`}
                 )}
               </div>
 
+              {/* Optional Question Set Attachment */}
+              <div className="p-3.5 rounded-xl bg-indigo-50/70 border border-indigo-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-bold text-indigo-900 text-xs">
+                    <Upload className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Attach Question Set (.json or .csv) - Optional</span>
+                  </div>
+                  {subjectModalFile && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSubjectModalFile(null);
+                        setPreviewParsedCount(null);
+                        setPreviewSampleQuestion(null);
+                      }}
+                      className="text-[11px] text-rose-600 hover:underline font-semibold"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-600">
+                  Select a JSON or CSV file to immediately upload questions into this subject upon saving.
+                </p>
+                <input
+                  type="file"
+                  accept=".json,.csv"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] || null;
+                    setSubjectModalFile(f);
+                    inspectFileContent(f);
+                  }}
+                  className="w-full text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer"
+                />
+                {subjectModalFile && previewParsedCount !== null && (
+                  <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-800 flex items-center gap-1.5 font-semibold">
+                    <FileCheck2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>{previewParsedCount} questions detected and ready to be imported!</span>
+                  </div>
+                )}
+              </div>
+
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
@@ -1541,6 +1989,141 @@ CREATE POLICY "Public can view subjects" ...`}
                 >
                   {editingQuestion ? 'Update Question' : 'Save Question'}
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* QUICK UPLOAD QUESTION SET MODAL                           */}
+      {/* ========================================================= */}
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <Upload className="w-5 h-5 text-indigo-600" />
+                <h3 className="font-bold text-slate-900 text-base">
+                  Upload Question Set
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowUploadModal(false);
+                  setImportFile(null);
+                  setPreviewParsedCount(null);
+                  setPreviewSampleQuestion(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleBulkImport} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Destination Subject <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={importTargetSubjectId}
+                  onChange={(e) => setImportTargetSubjectId(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs sm:text-sm bg-white"
+                >
+                  <option value="">Select target subject...</option>
+                  {subjects.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.title} ({s.question_count || 0} questions)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Select Question Set File (.json or .csv) <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="file"
+                  accept=".json,.csv"
+                  required={!csvRawText.trim()}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] || null;
+                    setImportFile(f);
+                    inspectFileContent(f);
+                  }}
+                  className="w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"
+                />
+              </div>
+
+              {previewParsedCount !== null && (
+                <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-emerald-800">
+                    <FileCheck2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Ready to Upload: {previewParsedCount} Questions Detected</span>
+                  </div>
+                  {previewSampleQuestion && (
+                    <div className="p-2.5 rounded-lg bg-white border border-emerald-100 text-[11px] space-y-1">
+                      <p className="font-semibold text-slate-800 line-clamp-1">
+                        Sample: {previewSampleQuestion.text}
+                      </p>
+                      {previewSampleQuestion.options.length > 0 && (
+                        <p className="text-slate-600 truncate">
+                          Options: {previewSampleQuestion.options.join(' | ')}
+                        </p>
+                      )}
+                      <p className="text-emerald-700 font-medium">
+                        Correct: Option {previewSampleQuestion.correct}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={downloadSampleJSON}
+                    className="text-[11px] text-indigo-600 hover:underline flex items-center gap-1 font-semibold"
+                  >
+                    <Download className="w-3 h-3" /> Sample JSON
+                  </button>
+                  <span className="text-slate-300">|</span>
+                  <button
+                    type="button"
+                    onClick={downloadSampleCSV}
+                    className="text-[11px] text-emerald-600 hover:underline flex items-center gap-1 font-semibold"
+                  >
+                    <Download className="w-3 h-3" /> Sample CSV
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowUploadModal(false);
+                      setImportFile(null);
+                      setPreviewParsedCount(null);
+                      setPreviewSampleQuestion(null);
+                    }}
+                    className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-semibold text-xs hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isImporting}
+                    className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-xs flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    {isImporting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                    <span>Upload & Attach Questions</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>
