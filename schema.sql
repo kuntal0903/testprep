@@ -98,30 +98,3 @@ CREATE POLICY "Public can insert attempts" ON public.attempts
 DROP POLICY IF EXISTS "Admin can delete or update attempts" ON public.attempts;
 CREATE POLICY "Admin can delete or update attempts" ON public.attempts
     FOR ALL USING (auth.role() = 'service_role' OR auth.role() = 'authenticated');
-
--- ============================================================
--- 6. Initial Seed Data (1 Sample Subject + 5 MCQs + 5 Leaderboard Entries)
--- ============================================================
-
-INSERT INTO public.subjects (id, title, description, time_limit, negative_marking, negative_mark_value, passing_score)
-VALUES 
-    ('sub-web-dev', 'Computer Science: Web Technologies & JavaScript', 'Master core concepts of asynchronous JavaScript, DOM runtime, modern web protocols, and component lifecycle.', 10, true, 0.25, 60.00)
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.questions (id, subject_id, question_text, option_a, option_b, option_c, option_d, correct_option, explanation)
-VALUES
-    ('q-js-01', 'sub-web-dev', 'What is the logged output order of the following JavaScript snippet?\n\n```javascript\nconsole.log(''1'');\nsetTimeout(() => console.log(''2''), 0);\nPromise.resolve().then(() => console.log(''3''));\nconsole.log(''4'');\n```', '1, 2, 3, 4', '1, 4, 3, 2', '1, 4, 2, 3', '1, 3, 4, 2', 'B', 'Synchronous code runs first (1, then 4). Next, the microtask queue (Promise.then: 3) executes before the macrotask queue (setTimeout: 2). Order: 1, 4, 3, 2.'),
-    ('q-js-02', 'sub-web-dev', 'In React 18+, which hook is specifically recommended to synchronize with an external system or subscription outside of the React render cycle?', 'useMemo', 'useCallback', 'useEffect', 'useTransition', 'C', 'useEffect is designed to handle side effects and external system synchronization (timers, subscriptions, DOM mutations, manual network requests) after rendering.'),
-    ('q-js-03', 'sub-web-dev', 'Which HTTP request method is defined as idempotent according to the RFC 9110 specification?', 'POST', 'PUT', 'PATCH', 'CONNECT', 'B', 'An idempotent HTTP method produces the same intended server-side state upon multiple identical requests. PUT and DELETE are idempotent; POST is non-idempotent.'),
-    ('q-js-04', 'sub-web-dev', 'What is the behavior of the following expression in modern JavaScript?\n\n```javascript\nconst obj = { count: 0 };\nconst val1 = obj.count || 10;\nconst val2 = obj.count ?? 10;\nconsole.log(val1, val2);\n```', '0 0', '10 10', '10 0', '0 10', 'C', 'The logical OR (||) operator checks for falsiness (0 is falsy, evaluating to 10). The nullish coalescing operator (??) only checks for null or undefined, preserving 0.'),
-    ('q-js-05', 'sub-web-dev', 'Which CSS property establishes a new stacking context for an element without altering its normal document flow layout?', 'display: block', 'isolation: isolate', 'overflow: hidden', 'margin: 0 auto', 'B', 'Setting "isolation: isolate" creates a new stacking context explicitly without requiring artificial z-index or opacity hacks.')
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.attempts (id, subject_id, subject_title, student_name, roll_no, total_questions, answered_count, correct_count, incorrect_count, unanswered_count, score, percentage, time_taken_seconds, passed)
-VALUES
-    ('att-01', 'sub-web-dev', 'Computer Science: Web Technologies & JavaScript', 'Sophia Chen', 'CS-2024-001', 5, 5, 5, 0, 0, 5.00, 100.00, 145, true),
-    ('att-02', 'sub-web-dev', 'Computer Science: Web Technologies & JavaScript', 'Marcus Vance', 'CS-2024-042', 5, 5, 5, 0, 0, 5.00, 100.00, 198, true),
-    ('att-03', 'sub-web-dev', 'Computer Science: Web Technologies & JavaScript', 'Aarav Sharma', 'CS-2024-019', 5, 5, 4, 1, 0, 3.75, 75.00, 220, true),
-    ('att-04', 'sub-web-dev', 'Computer Science: Web Technologies & JavaScript', 'Elena Rostova', 'CS-2024-099', 5, 5, 3, 2, 0, 2.50, 50.00, 240, false),
-    ('att-05', 'sub-web-dev', 'Computer Science: Web Technologies & JavaScript', 'David Kim', 'CS-2024-088', 5, 4, 3, 1, 1, 2.75, 55.00, 310, false)
-ON CONFLICT (id) DO NOTHING;
